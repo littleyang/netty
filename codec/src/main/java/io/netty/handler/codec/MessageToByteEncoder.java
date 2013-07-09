@@ -18,7 +18,6 @@ package io.netty.handler.codec;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.MessageList;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.internal.TypeParameterMatcher;
 
@@ -87,10 +86,6 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
                     ReferenceCountUtil.release(cast);
                 }
             } else {
-                if (buf != null && buf.isReadable()) {
-                    ctx.write(buf);
-                    buf = null;
-                }
                 ctx.write(msg);
             }
 
@@ -110,7 +105,7 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
     }
 
     /**
-     * Encode a message into a {@link ByteBuf}. This method will be called till the {@link MessageList} has
+     * Encode a message into a {@link ByteBuf}. This method will be called till the {@link CodecOutput} has
      * nothing left.
      *
      * @param ctx           the {@link ChannelHandlerContext} which this {@link MessageToByteEncoder} belongs to

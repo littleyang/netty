@@ -17,9 +17,10 @@ package io.netty.handler.codec;
 
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.MessageList;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.internal.TypeParameterMatcher;
+
+import java.util.List;
 
 /**
  * A Codec for on-the-fly encoding/decoding of message.
@@ -61,7 +62,7 @@ public abstract class MessageToMessageCodec<INBOUND_IN, OUTBOUND_IN> extends Cha
 
         @Override
         @SuppressWarnings("unchecked")
-        protected void encode(ChannelHandlerContext ctx, Object msg, MessageList<Object> out) throws Exception {
+        protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
             MessageToMessageCodec.this.encode(ctx, (OUTBOUND_IN) msg, out);
         }
     };
@@ -75,7 +76,7 @@ public abstract class MessageToMessageCodec<INBOUND_IN, OUTBOUND_IN> extends Cha
 
         @Override
         @SuppressWarnings("unchecked")
-        protected void decode(ChannelHandlerContext ctx, Object msg, MessageList<Object> out) throws Exception {
+        protected void decode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
             MessageToMessageCodec.this.decode(ctx, (INBOUND_IN) msg, out);
         }
     };
@@ -123,14 +124,14 @@ public abstract class MessageToMessageCodec<INBOUND_IN, OUTBOUND_IN> extends Cha
     }
 
     /**
-     * @see MessageToMessageEncoder#encode(ChannelHandlerContext, Object, MessageList)
+     * @see MessageToMessageEncoder#encode(ChannelHandlerContext, Object, CodecOutput)
      */
-    protected abstract void encode(ChannelHandlerContext ctx, OUTBOUND_IN msg, MessageList<Object> out)
+    protected abstract void encode(ChannelHandlerContext ctx, OUTBOUND_IN msg, List<Object> out)
             throws Exception;
 
     /**
-     * @see MessageToMessageDecoder#decode(ChannelHandlerContext, Object, MessageList)
+     * @see MessageToMessageDecoder#decode(ChannelHandlerContext, Object, CodecOutput)
      */
-    protected abstract void decode(ChannelHandlerContext ctx, INBOUND_IN msg, MessageList<Object> out)
+    protected abstract void decode(ChannelHandlerContext ctx, INBOUND_IN msg, List<Object> out)
             throws Exception;
 }

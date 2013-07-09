@@ -19,8 +19,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.MessageList;
 import io.netty.util.internal.StringUtil;
+
+import java.util.List;
 
 /**
  * {@link ChannelInboundHandlerAdapter} which decodes bytes in a stream-like fashion from one {@link ByteBuf} to an
@@ -32,7 +33,7 @@ import io.netty.util.internal.StringUtil;
  * <pre>
  *     public class SquareDecoder extends {@link ByteToMessageDecoder} {
  *         {@code @Override}
- *         public void decode({@link ChannelHandlerContext} ctx, {@link ByteBuf} in, {@link MessageList} out)
+ *         public void decode({@link ChannelHandlerContext} ctx, {@link ByteBuf} in, List&lt;Object&gt; out)
  *                 throws {@link Exception} {
  *             out.add(in.readBytes(in.readableBytes()));
  *         }
@@ -47,7 +48,6 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     protected ByteBuf cumulation;
     private boolean singleDecode;
     private boolean decodeWasNull;
-    private MessageList<Object> out;
 
     protected ByteToMessageDecoder() {
         if (getClass().isAnnotationPresent(Sharable.class)) {
@@ -102,13 +102,9 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     public final void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
         ByteBuf buf = internalBuffer();
         if (buf.isReadable()) {
-            if (out == null) {
-                ctx.fireMessageReceived(buf);
-            } else {
-                out.add(buf.copy());
-            }
-            buf.clear();
+            ctx.fireMessageReceived(buf);
         }
+        ctx.fireMessageReceivedLast();
         handlerRemoved0(ctx);
     }
 
@@ -120,7 +116,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
-        out = MessageList.newInstance();
+        CodecOutput out = CodecOutput.newInstance();
         try {
             if (msg instanceof ByteBuf) {
                 ByteBuf data = (ByteBuf) msg;
@@ -162,8 +158,6 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         } catch (Throwable t) {
             throw new DecoderException(t);
         } finally {
-            MessageList<Object> out = this.out;
-            this.out = null;
             if (out.isEmpty()) {
                 decodeWasNull = true;
             }
@@ -171,6 +165,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             for (int i = 0; i < out.size(); i ++) {
                 ctx.fireMessageReceived(out.get(i));
             }
+            
+            out.recycle();
         }
     }
 
@@ -187,7 +183,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        MessageList<Object> out = MessageList.newInstance();
+        CodecOutput out = CodecOutput.newInstance();
         try {
             if (cumulation != null) {
                 callDecode(ctx, cumulation, out);
@@ -205,12 +201,14 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 cumulation = null;
             }
 
-            ctx.fireMessageReceived(out);
+            for (int i = 0; i < out.size(); i ++) {
+                ctx.fireMessageReceived(out.get(i));
+            }
             ctx.fireChannelInactive();
         }
     }
 
-    protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) {
+    protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, CodecOutput out) {
         try {
             while (in.isReadable()) {
                 int outSize = out.size();
@@ -248,20 +246,20 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      *
      * @param ctx           the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
      * @param in            the {@link ByteBuf} from which to read data
-     * @param out           the {@link MessageList} to which decoded messages should be added
+     * @param out           the {@link CodecOutput} to which decoded messages should be added
 
      * @throws Exception    is thrown if an error accour
      */
-    protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception;
+    protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception;
 
     /**
      * Is called one last time when the {@link ChannelHandlerContext} goes in-active. Which means the
      * {@link #channelInactive(ChannelHandlerContext)} was triggered.
      *
-     * By default this will just call {@link #decode(ChannelHandlerContext, ByteBuf, MessageList)} but sub-classes may
+     * By default this will just call {@link #decode(ChannelHandlerContext, ByteBuf, CodecOutput)} but sub-classes may
      * override this for some special cleanup operation.
      */
-    protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception {
+    protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         decode(ctx, in, out);
     }
 }

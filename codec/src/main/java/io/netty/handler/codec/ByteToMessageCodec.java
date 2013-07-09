@@ -18,8 +18,9 @@ package io.netty.handler.codec;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.MessageList;
 import io.netty.util.internal.TypeParameterMatcher;
+
+import java.util.List;
 
 /**
  * A Codec for on-the-fly encoding/decoding of bytes to messages and vise-versa.
@@ -46,12 +47,12 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
 
     private final ByteToMessageDecoder decoder = new ByteToMessageDecoder() {
         @Override
-        public void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception {
+        public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
             ByteToMessageCodec.this.decode(ctx, in, out);
         }
 
         @Override
-        protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception {
+        protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
             ByteToMessageCodec.this.decodeLast(ctx, in, out);
         }
     };
@@ -92,14 +93,14 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
     protected abstract void encode(ChannelHandlerContext ctx, I msg, ByteBuf out) throws Exception;
 
     /**
-     * @see ByteToMessageDecoder#decode(ChannelHandlerContext, ByteBuf, MessageList)
+     * @see ByteToMessageDecoder#decode(ChannelHandlerContext, ByteBuf, List)
      */
-    protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception;
+    protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception;
 
     /**
-     * @see ByteToMessageDecoder#decodeLast(ChannelHandlerContext, ByteBuf, MessageList)
+     * @see ByteToMessageDecoder#decodeLast(ChannelHandlerContext, ByteBuf, List)
      */
-    protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception {
+    protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         decode(ctx, in, out);
     }
 }

@@ -15,15 +15,17 @@
  */
 package io.netty.handler.codec;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.MessageList;
 import io.netty.channel.embedded.EmbeddedChannel;
-import org.junit.Test;
 
-import static org.junit.Assert.*;
+import java.util.List;
+
+import org.junit.Test;
 
 public class ReplayingDecoderTest {
 
@@ -55,7 +57,7 @@ public class ReplayingDecoderTest {
         }
 
         @Override
-        protected void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) {
+        protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
             ByteBuf msg = in.readBytes(in.bytesBefore((byte) '\n'));
             out.add(msg);
             in.skipBytes(1);

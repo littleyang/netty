@@ -17,10 +17,11 @@ package io.netty.handler.codec;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.MessageList;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.internal.TypeParameterMatcher;
+
+import java.util.List;
 
 /**
  * {@link ChannelInboundHandlerAdapter} which decodes from one message to an other message.
@@ -35,7 +36,7 @@ import io.netty.util.internal.TypeParameterMatcher;
  *
  *         {@code @Override}
  *         public void decode({@link ChannelHandlerContext} ctx, {@link String} message,
- *                 {@link MessageList} out) throws {@link Exception} {
+ *                            List&lt;Object&gt; out) throws {@link Exception} {
  *             out.add(message.length());
  *         }
  *     }
@@ -64,7 +65,7 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
-        MessageList<Object> out = MessageList.newInstance();
+        CodecOutput out = CodecOutput.newInstance();
         try {
             if (acceptInboundMessage(msg)) {
                 @SuppressWarnings("unchecked")
@@ -85,17 +86,18 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
             for (int i = 0; i < out.size(); i ++) {
                 ctx.fireMessageReceived(out.get(i));
             }
+            out.recycle();
         }
     }
 
     /**
-     * Decode from one message to an other. This method will be called till either the {@link MessageList} has
+     * Decode from one message to an other. This method will be called till either the {@link CodecOutput} has
      * nothing left or till this method returns {@code null}.
      *
      * @param ctx           the {@link ChannelHandlerContext} which this {@link MessageToMessageDecoder} belongs to
      * @param msg           the message to decode to an other one
-     * @param out           the {@link MessageList} to which decoded messages should be added
+     * @param out           the {@link CodecOutput} to which decoded messages should be added
      * @throws Exception    is thrown if an error accour
      */
-    protected abstract void decode(ChannelHandlerContext ctx, I msg, MessageList<Object> out) throws Exception;
+    protected abstract void decode(ChannelHandlerContext ctx, I msg, List<Object> out) throws Exception;
 }

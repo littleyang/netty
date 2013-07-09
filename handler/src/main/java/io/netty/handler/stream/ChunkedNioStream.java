@@ -16,6 +16,7 @@
 package io.netty.handler.stream;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
@@ -48,7 +49,7 @@ public class ChunkedNioStream implements ChunkedByteInput {
      * Creates a new instance that fetches data from the specified channel.
      *
      * @param chunkSize the number of bytes to fetch on each
-     *                  {@link #readChunk(ByteBuf)} call
+     *                  {@link #readChunk(ChannelHandlerContext)} call
      */
     public ChunkedNioStream(ReadableByteChannel in, int chunkSize) {
         if (in == null) {
@@ -96,9 +97,9 @@ public class ChunkedNioStream implements ChunkedByteInput {
     }
 
     @Override
-    public boolean readChunk(ByteBuf buffer) throws Exception {
+    public ByteBuf readChunk(ChannelHandlerContext ctx) throws Exception {
         if (isEndOfInput()) {
-            return false;
+            return null;
         }
         // buffer cannot be not be empty from there
         int readBytes = byteBuffer.position();
@@ -114,9 +115,18 @@ public class ChunkedNioStream implements ChunkedByteInput {
             }
         }
         byteBuffer.flip();
-        buffer.writeBytes(byteBuffer);
-        byteBuffer.clear();
+        boolean release = true;
+        ByteBuf buffer = ctx.alloc().buffer(byteBuffer.remaining());
+        try {
+            buffer.writeBytes(byteBuffer);
+            byteBuffer.clear();
+            release = false;
+            return buffer;
+        } finally {
+            if (release) {
+                buffer.release();
+            }
+        }
 
-        return true;
     }
 }

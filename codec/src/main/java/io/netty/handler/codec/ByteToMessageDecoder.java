@@ -56,7 +56,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     }
 
     /**
-     * If set then only one message is decoded on each {@link #messageReceived(ChannelHandlerContext, MessageList)}
+     * If set then only one message is decoded on each {@link #messageReceived(ChannelHandlerContext, Object)}
      * call. This may be useful if you need to do some protocol upgrade and want to make sure nothing is mixed up.
      *
      * Default is {@code false} as this has performance impacts.
@@ -67,7 +67,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     /**
      * If {@code true} then only one message is decoded on each
-     * {@link #messageReceived(ChannelHandlerContext, MessageList)} call.
+     * {@link #messageReceived(ChannelHandlerContext, Object)} call.
      *
      * Default is {@code false} as this has performance impacts.
      */
@@ -119,72 +119,58 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     protected void handlerRemoved0(ChannelHandlerContext ctx) throws Exception { }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageList<Object> msgs) throws Exception {
+    public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
         out = MessageList.newInstance();
         try {
-            int size = msgs.size();
-            for (int i = 0; i < size; i ++) {
-                Object m = msgs.get(i);
-                // handler was removed in the loop so now copy over all remaining messages
-                if (ctx.isRemoved()) {
-                    out.add(msgs, i, size - i);
-                    return;
-                }
-                if (m instanceof ByteBuf) {
-                    ByteBuf data = (ByteBuf) m;
-                    if (cumulation == null) {
-                        cumulation = data;
-                        try {
-                            callDecode(ctx, data, out);
-                        } finally {
-                            if (!data.isReadable()) {
-                                cumulation = null;
-                                data.release();
-                            }
-                        }
-                    } else {
-                        try {
-                            if (cumulation.writerIndex() > cumulation.maxCapacity() - data.readableBytes()) {
-                                ByteBuf oldCumulation = cumulation;
-                                cumulation = ctx.alloc().buffer(oldCumulation.readableBytes() + data.readableBytes());
-                                cumulation.writeBytes(oldCumulation);
-                                oldCumulation.release();
-                            }
-                            cumulation.writeBytes(data);
-                            callDecode(ctx, cumulation, out);
-                        } finally {
-                            if (!cumulation.isReadable()) {
-                                cumulation.release();
-                                cumulation = null;
-                            } else {
-                                cumulation.discardSomeReadBytes();
-                            }
+            if (msg instanceof ByteBuf) {
+                ByteBuf data = (ByteBuf) msg;
+                if (cumulation == null) {
+                    cumulation = data;
+                    try {
+                        callDecode(ctx, data, out);
+                    } finally {
+                        if (!data.isReadable()) {
+                            cumulation = null;
                             data.release();
                         }
                     }
                 } else {
-                    out.add(m);
+                    try {
+                        if (cumulation.writerIndex() > cumulation.maxCapacity() - data.readableBytes()) {
+                            ByteBuf oldCumulation = cumulation;
+                            cumulation = ctx.alloc().buffer(oldCumulation.readableBytes() + data.readableBytes());
+                            cumulation.writeBytes(oldCumulation);
+                            oldCumulation.release();
+                        }
+                        cumulation.writeBytes(data);
+                        callDecode(ctx, cumulation, out);
+                    } finally {
+                        if (!cumulation.isReadable()) {
+                            cumulation.release();
+                            cumulation = null;
+                        } else {
+                            cumulation.discardSomeReadBytes();
+                        }
+                        data.release();
+                    }
                 }
+            } else {
+                out.add(msg);
             }
         } catch (DecoderException e) {
             throw e;
         } catch (Throwable t) {
             throw new DecoderException(t);
         } finally {
-            // release the cumulation if the handler was removed while messages are processed
-            if (ctx.isRemoved()) {
-                if (cumulation != null) {
-                    cumulation.release();
-                    cumulation = null;
-                }
-            }
             MessageList<Object> out = this.out;
             this.out = null;
             if (out.isEmpty()) {
                 decodeWasNull = true;
             }
-            msgs.recycle();
-            ctx.fireMessageReceived(out);
+
+            for (int i = 0; i < out.size(); i ++) {
+                ctx.fireMessageReceived(out.get(i));
+            }
         }
     }
 

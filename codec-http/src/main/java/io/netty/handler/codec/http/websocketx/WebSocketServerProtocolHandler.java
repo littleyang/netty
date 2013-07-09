@@ -20,9 +20,9 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandler;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.MessageList;
-import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -106,7 +106,7 @@ public class WebSocketServerProtocolHandler extends WebSocketProtocolHandler {
         if (cause instanceof WebSocketHandshakeException) {
             FullHttpResponse response = new DefaultFullHttpResponse(
                     HTTP_1_1, HttpResponseStatus.BAD_REQUEST, Unpooled.wrappedBuffer(cause.getMessage().getBytes()));
-            ctx.channel().write(response).addListener(ChannelFutureListener.CLOSE);
+            ctx.channel().write(response).flush().addListener(ChannelFutureListener.CLOSE);
         } else {
             ctx.close();
         }
@@ -121,12 +121,14 @@ public class WebSocketServerProtocolHandler extends WebSocketProtocolHandler {
     }
 
     static ChannelHandler forbiddenHttpRequestResponder() {
-        return new SimpleChannelInboundHandler<FullHttpRequest>() {
+        return new ChannelInboundHandlerAdapter() {
             @Override
-            protected void messageReceived(ChannelHandlerContext ctx, FullHttpRequest msg) throws Exception {
-                FullHttpResponse response =
-                        new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.FORBIDDEN);
-                ctx.channel().write(response);
+            public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
+                if (msg instanceof FullHttpRequest) {
+                    FullHttpResponse response =
+                            new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.FORBIDDEN);
+                    ctx.channel().write(response).flush();
+                }
             }
         };
     }

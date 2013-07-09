@@ -63,37 +63,28 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
     }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageList<Object> msgs) throws Exception {
+    public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
         MessageList<Object> out = MessageList.newInstance();
         try {
-            int size = msgs.size();
-            for (int i = 0; i < size; i ++) {
-                // handler was removed in the loop so now copy over all remaining messages
-                if (ctx.isRemoved()) {
-                    out.add(msgs, i, size - i);
-                    return;
+            if (acceptInboundMessage(msg)) {
+                @SuppressWarnings("unchecked")
+                I cast = (I) msg;
+                try {
+                    decode(ctx, cast, out);
+                } finally {
+                    ReferenceCountUtil.release(cast);
                 }
-
-                Object m = msgs.get(i);
-                if (acceptInboundMessage(m)) {
-                    @SuppressWarnings("unchecked")
-                    I cast = (I) m;
-                    try {
-                        decode(ctx, cast, out);
-                    } finally {
-                        ReferenceCountUtil.release(cast);
-                    }
-                } else {
-                    out.add(m);
-                }
+            } else {
+                out.add(msg);
             }
         } catch (DecoderException e) {
             throw e;
         } catch (Exception e) {
             throw new DecoderException(e);
         } finally {
-            msgs.recycle();
-            ctx.fireMessageReceived(out);
+            for (int i = 0; i < out.size(); i ++) {
+                ctx.fireMessageReceived(out.get(i));
+            }
         }
     }
 

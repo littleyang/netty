@@ -17,7 +17,6 @@ package io.netty.handler.codec;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
 import io.netty.channel.MessageList;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ReferenceCounted;
@@ -61,39 +60,31 @@ public abstract class MessageToMessageEncoder<I> extends ChannelOutboundHandlerA
     }
 
     @Override
-    public void write(ChannelHandlerContext ctx, MessageList<Object> msgs, ChannelPromise promise) throws Exception {
+    public void write(ChannelHandlerContext ctx, Object msg) throws Exception {
         MessageList<Object> out = MessageList.newInstance();
         boolean success = false;
         try {
-            int size = msgs.size();
-            for (int i = 0; i < size; i ++) {
-                // handler was removed in the loop so now copy over all remaining messages
-                if (ctx.isRemoved()) {
-                    out.add(msgs, i, size - i);
-                    break;
+            if (acceptOutboundMessage(msg)) {
+                @SuppressWarnings("unchecked")
+                I cast = (I) msg;
+                try {
+                    encode(ctx, cast, out);
+                } finally {
+                    ReferenceCountUtil.release(cast);
                 }
-                Object m = msgs.get(i);
-                if (acceptOutboundMessage(m)) {
-                    @SuppressWarnings("unchecked")
-                    I cast = (I) m;
-                    try {
-                        encode(ctx, cast, out);
-                    } finally {
-                        ReferenceCountUtil.release(cast);
-                    }
-                } else {
-                    out.add(m);
-                }
+            } else {
+                out.add(msg);
             }
             success = true;
-        } catch (CodecException e) {
+        } catch (EncoderException e) {
             throw e;
         } catch (Throwable t) {
             throw new EncoderException(t);
         } finally {
-            msgs.recycle();
             if (success) {
-                ctx.write(out, promise);
+                for (int i = 0; i < out.size(); i ++) {
+                    ctx.write(out.get(i));
+                }
             } else {
                 out.releaseAllAndRecycle();
             }

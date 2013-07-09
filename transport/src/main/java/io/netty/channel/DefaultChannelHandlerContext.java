@@ -380,7 +380,7 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         final DefaultChannelHandlerContext next = findContextInbound();
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
-            next.invokeChannelReadSuspended();
+            next.invokeMessageReceivedLast();
         } else {
             Runnable task = next.invokeMessageReceivedLastTask;
             if (task == null) {

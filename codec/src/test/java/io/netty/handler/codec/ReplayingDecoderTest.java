@@ -80,9 +80,9 @@ public class ReplayingDecoderTest {
 
     private static final class BloatedLineDecoder extends ChannelInboundHandlerAdapter {
         @Override
-        public void messageReceived(ChannelHandlerContext ctx, MessageList<Object> msgs) throws Exception {
+        public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
             ctx.pipeline().replace(this, "less-bloated", new LineDecoder());
-            ctx.pipeline().fireMessageReceived(msgs);
+            ctx.pipeline().fireMessageReceived(msg);
         }
     }
 

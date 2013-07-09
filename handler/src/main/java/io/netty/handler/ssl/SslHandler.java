@@ -19,16 +19,16 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandler;
+import io.netty.channel.ChannelOutboundHandler;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.MessageList;
-import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.util.concurrent.DefaultPromise;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.Future;
@@ -151,7 +151,7 @@ import java.util.regex.Pattern;
  * For more details see
  * <a href="https://github.com/netty/netty/issues/832">#832</a> in our issue tracker.
  */
-public class SslHandler extends ChannelDuplexHandler {
+public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundHandler {
 
     private static final InternalLogger logger =
         InternalLoggerFactory.getInstance(SslHandler.class);
@@ -185,7 +185,6 @@ public class SslHandler extends ChannelDuplexHandler {
 
     private int packetLength;
     private ByteBuf decodeOut;
-    protected ByteBuf cumulation;
 
     private volatile long handshakeTimeoutMillis = 10000;
     private volatile long closeNotifyTimeoutMillis = 3000;
@@ -346,16 +345,10 @@ public class SslHandler extends ChannelDuplexHandler {
     }
 
     @Override
-    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+    public void handlerRemoved0(ChannelHandlerContext ctx) throws Exception {
         if (decodeOut != null) {
             decodeOut.release();
             decodeOut = null;
-        }
-        ByteBuf buf = internalBuffer();
-        if (buf.isReadable()) {
-            ctx.fireMessageReceived(buf);
-        } else {
-            buf.release();
         }
         for (;;) {
             PendingWrite write = pendingUnencryptedWrites.poll();
@@ -512,7 +505,13 @@ public class SslHandler extends ChannelDuplexHandler {
             }
 
             if (unwrapLater) {
-                unwrap(ctx);
+                MessageList<Object> messageList = MessageList.newInstance();
+                unwrap(ctx, messageList);
+                if (messageList.isEmpty()) {
+                    messageList.recycle();
+                } else {
+                    ctx.fireMessageReceived(messageList);
+                }
             }
         } catch (SSLException e) {
             setHandshakeFailure(e);
@@ -531,18 +530,6 @@ public class SslHandler extends ChannelDuplexHandler {
             if (out != null) {
                 out.release();
             }
-        }
-    }
-    /**
-     * Returns the internal cumulative buffer of this decoder. You usually
-     * do not need to access the internal buffer directly to write a decoder.
-     * Use it only when you must use it at your own risk.
-     */
-    protected ByteBuf internalBuffer() {
-        if (cumulation != null) {
-            return cumulation;
-        } else {
-            return Unpooled.EMPTY_BUFFER;
         }
     }
 
@@ -596,7 +583,13 @@ public class SslHandler extends ChannelDuplexHandler {
             }
 
             if (unwrapLater) {
-                unwrap(ctx);
+                MessageList<Object> messageList = MessageList.newInstance();
+                unwrap(ctx, messageList);
+                if (messageList.isEmpty()) {
+                    messageList.recycle();
+                } else {
+                    ctx.fireMessageReceived(messageList);
+                }
             }
         } catch (SSLException e) {
             setHandshakeFailure(e);
@@ -810,65 +803,6 @@ public class SslHandler extends ChannelDuplexHandler {
         return packetLength;
     }
 
-    @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageList<Object> msgs) throws Exception {
-        try {
-            int size = msgs.size();
-            for (int i = 0; i < size; i ++) {
-                Object m = msgs.get(i);
-                // handler was removed in the loop so now copy over all remaining messages
-                if (ctx.isRemoved()) {
-                    ctx.fireMessageReceived(msgs.copy(i, size - i));
-                    return;
-                }
-                ByteBuf data = (ByteBuf) m;
-                if (cumulation == null) {
-                    cumulation = data;
-                    try {
-                        decode0(ctx);
-                    } finally {
-                        if (!data.isReadable()) {
-                            cumulation = null;
-                            data.release();
-                        }
-                    }
-                } else {
-                    try {
-                        if (cumulation.writerIndex() > cumulation.maxCapacity() - data.readableBytes()) {
-                            ByteBuf oldCumulation = cumulation;
-                            cumulation = ctx.alloc().buffer(oldCumulation.readableBytes() + data.readableBytes());
-                            cumulation.writeBytes(oldCumulation);
-                            oldCumulation.release();
-                        }
-                        cumulation.writeBytes(data);
-                        decode0(ctx);
-                    } finally {
-                        if (!cumulation.isReadable()) {
-                            cumulation.release();
-                            cumulation = null;
-                        } else {
-                            cumulation.discardSomeReadBytes();
-                        }
-                        data.release();
-                    }
-                }
-            }
-        } catch (DecoderException e) {
-            throw e;
-        } catch (Throwable t) {
-            throw new DecoderException(t);
-        } finally {
-            // release the cumulation if the handler was removed while messages are processed
-            if (ctx.isRemoved()) {
-                if (cumulation != null) {
-                    cumulation.release();
-                    cumulation = null;
-                }
-            }
-            msgs.recycle();
-        }
-    }
-
     private int readPacketLength(ByteBuf in) throws NotSslRecordException {
         int packetLength = this.packetLength;
         if (packetLength == 0) {
@@ -893,8 +827,8 @@ public class SslHandler extends ChannelDuplexHandler {
         return packetLength;
     }
 
-    private void decode0(final ChannelHandlerContext ctx) throws SSLException {
-        ByteBuf in = internalBuffer();
+    @Override
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception {
         try {
             int packetLength = readPacketLength(in);
             if (packetLength == -1) {
@@ -903,7 +837,7 @@ public class SslHandler extends ChannelDuplexHandler {
             }
             assert packetLength > 0;
             this.packetLength = packetLength;
-            unwrap(ctx);
+            unwrap(ctx, out);
         } catch (NotSslRecordException e) {
             ctx.fireExceptionCaught(e);
             setHandshakeFailure(e);
@@ -911,7 +845,7 @@ public class SslHandler extends ChannelDuplexHandler {
         }
     }
 
-    private void unwrap(ChannelHandlerContext ctx) throws SSLException {
+    private void unwrap(ChannelHandlerContext ctx, MessageList<Object> out) throws SSLException {
         boolean wrapLater = false;
         int bytesProduced = 0;
         ByteBuf in = internalBuffer();
@@ -985,7 +919,7 @@ public class SslHandler extends ChannelDuplexHandler {
             if (bytesProduced > 0) {
                 ByteBuf decodeOut = this.decodeOut;
                 this.decodeOut = null;
-                ctx.fireMessageReceived(decodeOut);
+                out.add(decodeOut);
             }
         }
     }

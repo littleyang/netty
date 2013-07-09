@@ -33,7 +33,12 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
-        ctx.write(msg).flush();
+        ctx.write(msg);
+    }
+
+    @Override
+    public void messageReceivedLast(ChannelHandlerContext ctx) throws Exception {
+        ctx.flush();
     }
 
     @Override

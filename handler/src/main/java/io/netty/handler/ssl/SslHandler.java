@@ -505,13 +505,7 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
             }
 
             if (unwrapLater) {
-                MessageList<Object> messageList = MessageList.newInstance();
-                unwrap(ctx, messageList);
-                if (messageList.isEmpty()) {
-                    messageList.recycle();
-                } else {
-                    ctx.fireMessageReceived(messageList);
-                }
+                unwrapLater(ctx);
             }
         } catch (SSLException e) {
             setHandshakeFailure(e);
@@ -531,6 +525,16 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
                 out.release();
             }
         }
+    }
+
+    private void unwrapLater(ChannelHandlerContext ctx) throws SSLException {
+            MessageList<Object> messageList = MessageList.newInstance();
+            decode(ctx, internalBuffer(),  messageList);
+            if (messageList.isEmpty()) {
+                messageList.recycle();
+            } else {
+                ctx.fireMessageReceived(messageList);
+            }
     }
 
     private void flushNonAppData0(ChannelHandlerContext ctx) throws SSLException {
@@ -583,13 +587,7 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
             }
 
             if (unwrapLater) {
-                MessageList<Object> messageList = MessageList.newInstance();
-                unwrap(ctx, messageList);
-                if (messageList.isEmpty()) {
-                    messageList.recycle();
-                } else {
-                    ctx.fireMessageReceived(messageList);
-                }
+                unwrapLater(ctx);
             }
         } catch (SSLException e) {
             setHandshakeFailure(e);
@@ -803,14 +801,15 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
         return packetLength;
     }
 
-    private int readPacketLength(ByteBuf in) throws NotSslRecordException {
+    @Override
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws SSLException {
         int packetLength = this.packetLength;
         if (packetLength == 0) {
             // the previous packet was consumed so try to read the length of the next packet
             final int readableBytes = in.readableBytes();
             if (readableBytes < 5) {
                 // not enough bytes readable to read the packet length
-                return -1;
+                return;
             }
 
             packetLength = getEncryptedPacketLength(in);
@@ -819,62 +818,42 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
                 in.skipBytes(readableBytes);
                 NotSslRecordException e = new NotSslRecordException(
                         "not an SSL/TLS record: " + ByteBufUtil.hexDump(in));
-                throw e;
-            }
-
-            return packetLength;
-        }
-        return packetLength;
-    }
-
-    @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, MessageList<Object> out) throws Exception {
-        try {
-            int packetLength = readPacketLength(in);
-            if (packetLength == -1) {
-                // not enough data yet
+                ctx.fireExceptionCaught(e);
+                setHandshakeFailure(e);
+                this.packetLength = 0;
                 return;
             }
+
             assert packetLength > 0;
             this.packetLength = packetLength;
-            unwrap(ctx, out);
-        } catch (NotSslRecordException e) {
-            ctx.fireExceptionCaught(e);
-            setHandshakeFailure(e);
-            packetLength = 0;
+        }
+
+        if (in.readableBytes() < packetLength) {
+            // wait until the whole packet can be read
+            return;
+        }
+
+        try {
+            // slice out the whole packet so unwrap will only be called with complete packets
+            int readerIndex = in.readerIndex();
+            in.skipBytes(packetLength);
+            unwrap(ctx, in.nioBuffer(readerIndex, packetLength), out);
+        } finally {
+            this.packetLength = 0;
         }
     }
 
-    private void unwrap(ChannelHandlerContext ctx, MessageList<Object> out) throws SSLException {
+    private void unwrap(ChannelHandlerContext ctx, ByteBuffer packet, MessageList<Object> out) throws SSLException {
         boolean wrapLater = false;
         int bytesProduced = 0;
-        ByteBuf in = internalBuffer();
         try {
             loop:
             for (;;) {
                 if (decodeOut == null) {
                     decodeOut = ctx.alloc().buffer();
                 }
-                SSLEngineResult result = unwrap(engine, in, decodeOut);
+                SSLEngineResult result = unwrap(engine, packet, decodeOut);
                 bytesProduced += result.bytesProduced();
-                packetLength -= result.bytesConsumed();
-
-                assert packetLength >= 0;
-                if (packetLength == 0) {
-                    try {
-                        // read the next packet length if the whole packet was consumed
-                        int length = readPacketLength(in);
-                        if (length != -1) {
-                            assert length > 0;
-                            packetLength = length;
-                        }
-                    } catch (NotSslRecordException e) {
-                        ctx.fireExceptionCaught(e);
-                        setHandshakeFailure(e);
-                        packetLength = 0;
-                        return;
-                    }
-                }
                 switch (result.getStatus()) {
                     case CLOSED:
                         // notify about the CLOSED state of the SSLEngine. See #137
@@ -924,12 +903,10 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
         }
     }
 
-    private static SSLEngineResult unwrap(SSLEngine engine, ByteBuf in, ByteBuf out) throws SSLException {
-        ByteBuffer in0 = in.nioBuffer();
+    private static SSLEngineResult unwrap(SSLEngine engine, ByteBuffer in, ByteBuf out) throws SSLException {
         for (;;) {
             ByteBuffer out0 = out.nioBuffer(out.writerIndex(), out.writableBytes());
-            SSLEngineResult result = engine.unwrap(in0, out0);
-            in.skipBytes(result.bytesConsumed());
+            SSLEngineResult result = engine.unwrap(in, out0);
             out.writerIndex(out.writerIndex() + result.bytesProduced());
             switch (result.getStatus()) {
             case BUFFER_OVERFLOW:

@@ -19,16 +19,16 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
-import io.netty.channel.MessageList;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.GlobalEventExecutor;
-import org.junit.Assert;
-import org.junit.Test;
 
 import java.net.InetSocketAddress;
+
+import org.junit.Assert;
+import org.junit.Test;
 
 
 public class NioDatagramChannelTest {

@@ -23,7 +23,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.MessageList;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
@@ -304,12 +303,10 @@ public class LocalTransportThreadModelTest {
                 ch.pipeline().context(h6).executor().execute(new Runnable() {
                     @Override
                     public void run() {
-                        MessageList<Object> msgs = MessageList.newInstance(end - start);
                         for (int j = start; j < end; j ++) {
-                            msgs.add(Integer.valueOf(j));
+                            ch.write(Integer.valueOf(j));
                         }
-
-                        ch.pipeline().write(msgs);
+                        ch.flush();
                     }
                 });
             }

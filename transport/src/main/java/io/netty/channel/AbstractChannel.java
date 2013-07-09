@@ -656,12 +656,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
                     int messageIndex = outboundBuffer.currentMessageIndex;
                     int messageCount = messages.size();
+                    Object[] messageArray = messages.array();
 
                     // Make sure the promise has not been cancelled.
                     if (promise.isCancelled()) {
                         // If cancelled, release all unwritten messages and recycle.
                         for (int i = messageIndex; i < messageCount; i ++) {
-                            ReferenceCountUtil.release(messages.get(i));
+                            ReferenceCountUtil.release(messageArray[i]);
                         }
                         messages.recycle();
                         if (!outboundBuffer.next()) {
@@ -672,7 +673,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     }
 
                     // Write the messages.
-                    int writtenMessages = doWrite(messages, messageIndex);
+                    int writtenMessages = doWrite(messageArray, messageCount, messageIndex);
                     outboundBuffer.currentMessageIndex = messageIndex += writtenMessages;
                     if (messageIndex >= messageCount) {
                         messages.recycle();
@@ -803,7 +804,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      *
      * @return the number of written messages
      */
-    protected abstract int doWrite(MessageList<Object> msgs, int index) throws Exception;
+    protected abstract int doWrite(Object[] msgs, int msgsLength, int startIndex) throws Exception;
 
     protected static void checkEOF(FileRegion region) throws IOException {
         if (region.transfered() < region.count()) {

@@ -788,23 +788,6 @@ final class DefaultChannelPipeline implements ChannelPipeline {
     }
     
     @Override
-    public ChannelPipeline fireMessageReceived(MessageList<?> msgs) {
-        if (msgs == null) {
-            throw new NullPointerException("msgs");
-        }
-        
-        final int size = msgs.size();
-        final Object[] array = msgs.array();
-        for (int i = 0; i < size; i ++) {
-            head.fireMessageReceived(array[i]);
-        }
-        
-        head.fireMessageReceivedLast();
-        
-        return this;
-    }
-
-    @Override
     public ChannelPipeline fireChannelReadSuspended() {
         head.fireChannelReadSuspended();
         if (channel.config().isAutoRead()) {
@@ -895,15 +878,6 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
     
-    public ChannelFuture write(MessageList<Object> msgs) {
-        final int size = msgs.size();
-        final Object[] array = msgs.array();
-        for (int i = 0; i < size; i ++) {
-            write(array[i]);
-        }
-        return flush();
-    }
-
     @Override
     public ChannelFuture flush(ChannelPromise promise) {
         return tail.flush(promise);

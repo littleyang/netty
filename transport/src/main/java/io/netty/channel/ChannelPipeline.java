@@ -619,8 +619,6 @@ public interface ChannelPipeline
     @Override
     ChannelPipeline fireMessageReceivedLast();
 
-    ChannelPipeline fireMessageReceived(MessageList<?> msgs);
-
     @Override
     ChannelPipeline fireChannelReadSuspended();
 
@@ -629,6 +627,4 @@ public interface ChannelPipeline
 
     @Override
     ChannelPipeline write(Object msg);
-    
-    ChannelFuture write(MessageList<Object> msgs);
 }

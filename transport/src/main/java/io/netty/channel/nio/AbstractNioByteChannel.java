@@ -22,7 +22,6 @@ import io.netty.channel.ChannelConfig;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.FileRegion;
-import io.netty.channel.MessageList;
 import io.netty.channel.RecvByteBufAllocator;
 import io.netty.channel.socket.ChannelInputShutdownEvent;
 import io.netty.util.internal.StringUtil;
@@ -145,14 +144,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     }
 
     @Override
-    protected int doWrite(MessageList<Object> msgs, int index) throws Exception {
-        int size = msgs.size();
-        int writeIndex = index;
+    protected int doWrite(Object[] msgs, int msgsLength, int startIndex) throws Exception {
+        int writeIndex = startIndex;
         for (;;) {
-            if (writeIndex >= size) {
+            if (writeIndex >= msgsLength) {
                 break;
             }
-            Object msg = msgs.get(writeIndex);
+            Object msg = msgs[writeIndex];
             if (msg instanceof ByteBuf) {
                 ByteBuf buf = (ByteBuf) msg;
                 if (!buf.isReadable()) {
@@ -203,7 +201,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 throw new UnsupportedOperationException("unsupported message type: " + StringUtil.simpleClassName(msg));
             }
         }
-        return writeIndex - index;
+        return writeIndex - startIndex;
     }
 
     /**
